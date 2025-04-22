@@ -1,0 +1,6 @@
+campaign_id,channel,impressions,clicks,conversions,spend,ctr,cvr,cpc,cpa,revenue,roi,age_group,gender,location,device,feedback
+C1,Facebook,25000,750,30,2500,0.03,0.04,3.33,83.33,6000,1.4,25-34,F,Urban,Mobile,"Great product, very satisfied!"
+C2,Google,35000,1200,50,3000,0.034,0.042,2.5,60,9000,2,35-44,M,Suburban,Desktop,"It's okay, but could be better."
+C3,Instagram,15000,600,15,1800,0.04,0.025,3,120,3600,1,18-24,F,Urban,Mobile,"Love it! Will recommend to others."
+C4,Twitter,8000,240,8,1200,0.03,0.033,5,150,1800,0.5,45-54,M,Rural,Tablet,"Product works as advertised."
+C5,Facebook,30000,900,36,2700,0.03,0.04,3,75,7200,1.67,25-34,M,Urban,Mobile,"Excellent customer service!"
