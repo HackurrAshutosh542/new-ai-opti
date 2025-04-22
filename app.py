@@ -1,168 +1,674 @@
 import streamlit as st
-import joblib
-import numpy as np
 import pandas as pd
-import plotly.graph_objects as go
+import numpy as np
 import plotly.express as px
-import seaborn as sns
-import matplotlib.pyplot as plt
-import re
-from wordcloud import WordCloud
+import plotly.graph_objects as go
+from io import StringIO
 
-# Load models and columns
-xgb_model = joblib.load("xgboost_best_model.pkl")
-sentiment_model = joblib.load("sentiment_logistic_model.pkl")
-tfidf_vectorizer = joblib.load("tfidf_vectorizer.pkl")
-columns = joblib.load("xgb_model_columns.pkl")
+# Import custom modules
+from utils.data_processor import process_campaign_data, validate_data
+from utils.visualizations import (create_kpi_cards, create_prediction_chart, 
+                                create_sentiment_chart, create_segment_chart, 
+                                create_budget_chart)
+from models.prediction_model import predict_campaign_success
+from models.sentiment_analyzer import analyze_sentiment
+from models.customer_segmentation import segment_customers
+from models.budget_optimizer import optimize_budget
 
-# Categorical options
-job_list = ['admin.', 'blue-collar', 'entrepreneur', 'housemaid', 'management', 'retired', 'self-employed', 'services', 'student', 'technician', 'unemployed']
-marital_list = ['divorced', 'married', 'single']
-edu_list = ['basic.4y', 'basic.6y', 'basic.9y', 'high.school', 'illiterate', 'professional.course', 'university.degree']
-default_list = ['no', 'yes']
-housing_list = ['no', 'yes']
-loan_list = ['no', 'yes']
-contact_list = ['cellular', 'telephone']
-month_list = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec']
-day_list = ['mon', 'tue', 'wed', 'thu', 'fri']
-poutcome_list = ['failure', 'nonexistent', 'success']
+# Set page config
+st.set_page_config(
+    page_title="AI Marketing Campaign Optimizer",
+    page_icon="📊",
+    layout="wide"
+)
 
-# Profanity list
-profanity_words = ["bitch", "asshole", "stupid", "idiot", "dumb", "hate", "ugly", "fool"]
+# Initialize session state
+if 'data' not in st.session_state:
+    st.session_state.data = None
+if 'processed_data' not in st.session_state:
+    st.session_state.processed_data = None
+if 'predictions' not in st.session_state:
+    st.session_state.predictions = None
+if 'sentiment_results' not in st.session_state:
+    st.session_state.sentiment_results = None
+if 'segments' not in st.session_state:
+    st.session_state.segments = None
+if 'budget_allocation' not in st.session_state:
+    st.session_state.budget_allocation = None
 
-def contains_profanity(text):
-    return any(re.search(rf"\\b{word}\\b", text.lower()) for word in profanity_words)
+# App header with more colorful styling
+st.markdown("""
+# <span style='color:#6C5CE7'>🚀 AI-Powered Marketing Campaign Optimizer</span>
+""", unsafe_allow_html=True)
 
-st.set_page_config(page_title="CampaignSense Ultra", layout="wide")
-st.title("🚀 CampaignSense Ultra: Complete AI Marketing Suite")
+# Add a colorful divider
+st.markdown("<hr style='height:3px;border:none;color:#6C5CE7;background-color:#6C5CE7;margin-bottom:30px;'/>", unsafe_allow_html=True)
 
-st.markdown("Analyze campaign success, customer sentiment, and visualize everything beautifully with data-backed insights.")
+# Add an engaging introduction with animation hint
+st.markdown("""
+<div style='animation: fadeIn 1.5s;'>
+<h3>Transform Your Marketing Strategy with AI</h3>
+This interactive dashboard helps you analyze marketing campaigns, predict success rates, understand customer sentiment, 
+segment your audience, and optimize budget allocation for maximum ROI.
+</div>
 
-tab1, tab2 = st.tabs(["📈 Campaign Predictor", "💬 Sentiment Analyzer"])
+<style>
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+</style>
+""", unsafe_allow_html=True)
 
-# Campaign Predictor Tab
-with tab1:
-    with st.form("campaign_form"):
-        st.header("🎯 Marketing Campaign Input Form")
-        col1, col2, col3 = st.columns(3)
-
-        with col1:
-            age = st.slider("Client Age", 18, 95, 35)
-            job = st.selectbox("Job", job_list)
-            marital = st.selectbox("Marital Status", marital_list)
-            education = st.selectbox("Education Level", edu_list)
-            default = st.selectbox("Credit Default?", default_list)
-            housing = st.selectbox("Housing Loan?", housing_list)
-
-        with col2:
-            loan = st.selectbox("Personal Loan?", loan_list)
-            contact = st.selectbox("Contact Type", contact_list)
-            month = st.selectbox("Last Contact Month", month_list)
-            day_of_week = st.selectbox("Last Contact Day", day_list)
-            poutcome = st.selectbox("Previous Outcome", poutcome_list)
-            campaign = st.number_input("# Contacts This Campaign", 1, 50, 1)
-
-        with col3:
-            pdays = st.number_input("Days Since Last Contact", 0, 999, 999)
-            previous = st.number_input("# Previous Contacts", 0, 10, 0)
-            emp_var_rate = st.slider("Employment Variation Rate", -3.0, 2.0, 1.1)
-            cons_price_idx = st.slider("Consumer Price Index", 92.0, 95.0, 93.994)
-            cons_conf_idx = st.slider("Consumer Confidence Index", -50.0, -20.0, -36.4)
-            euribor3m = st.slider("3-Month Euribor Rate", 0.5, 5.0, 4.8)
-            nr_employed = st.slider("# Employed in Economy", 4000, 5500, 5191)
-
-        submitted = st.form_submit_button("🔍 Predict Campaign Success")
-
-    if submitted:
-        st.markdown("---")
-        st.subheader("📊 Campaign Report & Visuals")
-
-        input_df = pd.DataFrame({
-            'age': [age], 'job': [job], 'marital': [marital], 'education': [education],
-            'default': [default], 'housing': [housing], 'loan': [loan], 'contact': [contact],
-            'month': [month], 'day_of_week': [day_of_week], 'campaign': [campaign],
-            'pdays': [pdays], 'previous': [previous], 'poutcome': [poutcome],
-            'emp.var.rate': [emp_var_rate], 'cons.price.idx': [cons_price_idx],
-            'cons.conf.idx': [cons_conf_idx], 'euribor3m': [euribor3m], 'nr.employed': [nr_employed]
+# Stylish Sidebar with custom CSS
+with st.sidebar:
+    st.markdown("""
+    <div style='text-align: center; margin-bottom: 20px;'>
+        <h2 style='color: #6C5CE7;'>📊 Control Panel</h2>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Add a pulsing button effect for upload section with enhanced styling
+    st.markdown("""
+    <style>
+    @keyframes pulse {
+        0% { box-shadow: 0 0 0 0 rgba(108, 92, 231, 0.7); }
+        70% { box-shadow: 0 0 0 10px rgba(108, 92, 231, 0); }
+        100% { box-shadow: 0 0 0 0 rgba(108, 92, 231, 0); }
+    }
+    .upload-section {
+        padding: 15px;
+        border-radius: 10px;
+        background-color: #f8f9fa;
+        margin-bottom: 20px;
+        border: 1px solid #e9ecef;
+        animation: pulse 2s infinite;
+    }
+    
+    .info-card {
+        background-color: #f0f7ff;
+        border-left: 4px solid #6C5CE7;
+        padding: 15px;
+        border-radius: 8px;
+        margin: 15px 0;
+        box-shadow: 0 4px 10px rgba(108, 92, 231, 0.1);
+    }
+    
+    .required-columns {
+        font-weight: bold;
+        color: #6C5CE7;
+    }
+    
+    .optional-columns {
+        font-style: italic;
+        color: #555;
+    }
+    
+    .download-link {
+        display: inline-block;
+        margin-top: 10px;
+        padding: 8px 12px;
+        background-color: #6C5CE7;
+        color: white;
+        border-radius: 5px;
+        text-decoration: none;
+        font-weight: 500;
+        transition: all 0.3s ease;
+    }
+    
+    .download-link:hover {
+        background-color: #5849BE;
+        box-shadow: 0 4px 8px rgba(108, 92, 231, 0.3);
+        transform: translateY(-2px);
+    }
+    </style>
+    <div class="upload-section">
+        <h3>Upload Your Data</h3>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    uploaded_file = st.file_uploader("Upload your marketing campaign data (CSV file)", type="csv")
+    
+    # Option to download a sample template
+    with open('sample_template.csv', 'r') as f:
+        csv_template = f.read()
+    
+    st.download_button(
+        label="📥 Download CSV Template",
+        data=csv_template,
+        file_name="marketing_campaign_template.csv",
+        mime="text/csv",
+        help="Download a sample CSV template with the required format",
+        use_container_width=True
+    )
+    
+    # Enhanced data format information with collapsible sections
+    with st.expander("📋 Data Format Requirements", expanded=False):
+        st.markdown("""
+        <div class="info-card">
+            <h4 style='color: #2D3748;'>Required Columns</h4>
+            <p>The following columns are <span class="required-columns">required</span> for basic analysis:</p>
+            <ul>
+                <li><code>campaign_id</code> - Unique identifier for each campaign</li>
+                <li><code>channel</code> - Marketing channel (e.g., Facebook, Google, Instagram)</li>
+                <li><code>impressions</code> - Number of times the ad was displayed</li>
+                <li><code>clicks</code> - Number of clicks on the ad</li>
+                <li><code>conversions</code> - Number of conversions (e.g., sales, sign-ups)</li>
+                <li><code>spend</code> - Amount spent on the campaign</li>
+            </ul>
+            
+            <h4 style='color: #2D3748;'>Optional Columns by Analysis Type</h4>
+            <p>The following columns are <span class="optional-columns">optional</span> but recommended for full functionality:</p>
+            
+            <p><strong>For Prediction Analysis:</strong></p>
+            <ul>
+                <li><code>ctr</code> - Click-through rate (can be calculated if missing)</li>
+                <li><code>cvr</code> - Conversion rate (can be calculated if missing)</li>
+                <li><code>cpc</code> - Cost per click (can be calculated if missing)</li>
+                <li><code>revenue</code> - Revenue generated from the campaign</li>
+            </ul>
+            
+            <p><strong>For Customer Segmentation:</strong></p>
+            <ul>
+                <li><code>age_group</code> - Age group of customers (e.g., 18-24, 25-34)</li>
+                <li><code>gender</code> - Gender of customers</li>
+                <li><code>location</code> - Location of customers (e.g., Urban, Suburban, Rural)</li>
+                <li><code>device</code> - Device used by customers (e.g., Mobile, Desktop, Tablet)</li>
+            </ul>
+            
+            <p><strong>For Sentiment Analysis:</strong></p>
+            <ul>
+                <li><code>feedback</code> - Customer feedback or comments</li>
+            </ul>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        st.info("💡 Missing optional columns will be calculated automatically when possible, or the related analysis features will be limited.")
+    
+    # Data preparation tips
+    with st.expander("🔎 Tips for Preparing Your Data", expanded=False):
+        st.markdown("""
+        <div class="info-card">
+            <h4>Data Preparation Tips</h4>
+            <ul>
+                <li><strong>Clean your data</strong>: Remove duplicates and ensure consistent formatting</li>
+                <li><strong>Format numbers correctly</strong>: Ensure metrics are numeric (not text)</li>
+                <li><strong>Handle missing values</strong>: Fill in missing values or ensure they're properly represented</li>
+                <li><strong>Use consistent naming</strong>: Ensure channel names and other categorical values are consistent</li>
+                <li><strong>Check for outliers</strong>: Extreme values may skew analysis results</li>
+            </ul>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    st.markdown("<hr style='height:2px;border:none;color:#6C5CE7;background-color:#6C5CE7;opacity:0.3;'/>", unsafe_allow_html=True)
+    
+    # Sample data option with improved button styling
+    st.markdown("""
+    <style>
+    .sample-button {
+        text-align: center;
+        margin-top: 20px;
+    }
+    </style>
+    <div class='sample-button'>
+        <h4>No data? Try our sample</h4>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    if st.button("✨ Use Sample Data", use_container_width=True):
+        # Create a basic sample dataframe for demonstration
+        sample_data = pd.DataFrame({
+            'campaign_id': [f'C{i}' for i in range(1, 11)],
+            'channel': np.random.choice(['Facebook', 'Google', 'Instagram', 'Twitter'], 10),
+            'impressions': np.random.randint(5000, 50000, 10),
+            'clicks': np.random.randint(100, 5000, 10),
+            'conversions': np.random.randint(10, 500, 10),
+            'spend': np.random.randint(1000, 10000, 10),
+            'ctr': np.random.uniform(0.01, 0.1, 10),
+            'cvr': np.random.uniform(0.001, 0.05, 10),
+            'cpc': np.random.uniform(0.5, 5, 10),
+            'cpa': np.random.uniform(10, 100, 10),
+            'revenue': np.random.randint(5000, 50000, 10),
+            'roi': np.random.uniform(0.5, 5, 10),
+            'age_group': np.random.choice(['18-24', '25-34', '35-44', '45-54', '55+'], 10),
+            'gender': np.random.choice(['M', 'F', 'Other'], 10),
+            'location': np.random.choice(['Urban', 'Suburban', 'Rural'], 10),
+            'device': np.random.choice(['Mobile', 'Desktop', 'Tablet'], 10),
+            'feedback': np.random.choice([
+                "Great product, very satisfied!", 
+                "Not what I expected, disappointed.", 
+                "It's okay, but could be better.",
+                "Love it! Will recommend to others.",
+                "Product works as advertised.",
+                "Terrible experience, wouldn't buy again.",
+                "Good value for money.",
+                "Average product, nothing special.",
+                "Excellent customer service!",
+                "Shipping was slow, but product is fine."
+            ], 10)
         })
+        
+        st.session_state.data = sample_data
+        st.success("Sample data loaded successfully!")
+        st.rerun()
 
-        encoded = pd.get_dummies(input_df)
-        encoded = encoded.reindex(columns=columns, fill_value=0)
-        prediction = xgb_model.predict(encoded)[0]
-        prob = xgb_model.predict_proba(encoded)[0][1] * 100
+# Reset button to clear loaded data and start over
+if st.session_state.data is not None:
+    if st.sidebar.button("🔄 Reset and Upload New Data", use_container_width=True):
+        # Clear all session state data
+        for key in ['data', 'processed_data', 'predictions', 'sentiment_results', 'segments', 'budget_allocation']:
+            if key in st.session_state:
+                st.session_state[key] = None
+        st.sidebar.success("Data cleared! You can now upload a new file.")
+        st.rerun()
 
-        colA, colB = st.columns(2)
-
-        with colA:
-            if prediction == 1:
-                st.success(f"✅ Success Likely! Confidence: {prob:.2f}%")
+# Main content - Process uploaded file
+if uploaded_file is not None and st.session_state.data is None:
+    # Read the uploaded CSV file with progress indicator
+    with st.spinner("Processing your data..."):
+        try:
+            # Show basic file info
+            file_details = {
+                "Filename": uploaded_file.name,
+                "File size": f"{uploaded_file.size / 1024:.2f} KB"
+            }
+            st.write("**File Details:**", file_details)
+            
+            # Read the file
+            data = pd.read_csv(uploaded_file)
+            
+            # Show initial data preview before validation
+            st.write("**Preview of uploaded data:**")
+            st.dataframe(data.head(3))
+            
+            # Validate the data
+            validation_result, message = validate_data(data)
+            
+            if validation_result:
+                # If there are warnings in the message, show them as a warning
+                if "warnings" in message.lower():
+                    st.warning(message)
+                else:
+                    st.success(message)
+                    
+                # Show basic stats about the data
+                st.write(f"**Data Summary:**")
+                st.write(f"- Number of campaigns: {data.shape[0]}")
+                st.write(f"- Number of columns: {data.shape[1]}")
+                
+                if 'channel' in data.columns:
+                    channels = data['channel'].unique()
+                    st.write(f"- Channels: {', '.join(channels)}")
+                
+                # Display a loading progress bar
+                progress_bar = st.progress(0)
+                for i in range(100):
+                    # Update the progress bar
+                    progress_bar.progress(i + 1)
+                    # Wait for a short time to simulate processing
+                    import time
+                    time.sleep(0.01)
+                
+                st.success("✅ Data loaded successfully! Click 'Analyze Data' to continue.")
+                
+                # Add custom styling for the analyze button to make it stand out
+                st.markdown("""
+                <style>
+                .analyze-btn {
+                    text-align: center;
+                    margin: 20px 0;
+                    animation: pulse-analyze 2s infinite;
+                }
+                
+                @keyframes pulse-analyze {
+                    0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(108, 92, 231, 0.7); }
+                    70% { transform: scale(1.05); box-shadow: 0 0 0 10px rgba(108, 92, 231, 0); }
+                    100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(108, 92, 231, 0); }
+                }
+                </style>
+                <div class="analyze-btn">
+                    <h3>🔍 Ready to analyze your data?</h3>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                # Make the analyze button prominent and clear for users
+                col1, col2 = st.columns([2, 1])
+                with col1:
+                    if st.button("📊 ANALYZE MY DATA NOW", type="primary", use_container_width=True):
+                        # Store the data in the session state and run analysis
+                        st.session_state.data = data
+                        st.rerun()
+                with col2:
+                    if st.button("❌ Cancel", use_container_width=True):
+                        st.info("Upload canceled. You can try again or use sample data.")
+                        uploaded_file = None
             else:
-                st.error(f"❌ Campaign Risk Alert! Success Chance: {prob:.2f}%")
+                st.error(f"⚠️ Data validation failed: {message}")
+                st.info("Please fix the issues in your data file and upload again, or use our sample data.")
+        except pd.errors.ParserError as e:
+            st.error(f"Error parsing CSV file: {str(e)}")
+            st.info("Make sure your file is a properly formatted CSV. Check for incorrect delimiters or unescaped characters.")
+        except Exception as e:
+            st.error(f"Error processing file: {str(e)}")
+            st.info("Please check your file format and try again, or use our sample data.")
 
-        with colB:
-            fig = go.Figure(go.Indicator(
-                mode="gauge+number",
-                value=prob,
-                title={'text': "Success Probability (%)"},
-                gauge={'axis': {'range': [0, 100]}, 'bar': {'color': "#1DD1A1"}}
-            ))
-            st.plotly_chart(fig, use_container_width=True)
-
-        bar_data = pd.DataFrame({
-            'Category': ['Your Campaign', 'Benchmark Avg'],
-            'Probability': [prob, 74.2]
-        })
-        bar_fig = px.bar(bar_data, x='Category', y='Probability', color='Category',
-                         title='Your Score vs Industry Benchmark', text_auto=True)
-        st.plotly_chart(bar_fig, use_container_width=True)
-
-        radar_data = pd.DataFrame({
-            'Metrics': ['emp.var.rate', 'euribor3m', 'campaign', 'pdays', 'previous'],
-            'Value': [emp_var_rate, euribor3m, campaign, pdays, previous]
-        })
-        radar_fig = px.line_polar(radar_data, r='Value', theta='Metrics', line_close=True,
-                                   title="📌 Key Metric Spread", color_discrete_sequence=['#00cec9'])
-        st.plotly_chart(radar_fig, use_container_width=True)
-
-# Sentiment Analyzer Tab
-with tab2:
-    st.header("💬 Campaign Sentiment Analyzer")
-    st.markdown("Test your campaign message for emotional tone and effectiveness before launching.")
-
-    text = st.text_area("Paste campaign message or tweet here:", height=150)
-    run_sentiment = st.button("🔎 Analyze Sentiment")
-
-    if run_sentiment:
-        if not text.strip():
-            st.warning("Please enter a valid message.")
+# Process data and show analysis if data is available
+if st.session_state.data is not None:
+    # Add custom CSS for tabs with animations
+    st.markdown("""
+    <style>
+    /* Custom styling for tab headers */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 8px;
+        margin-bottom: 20px;
+    }
+    
+    .stTabs [data-baseweb="tab"] {
+        height: 50px;
+        white-space: pre-wrap;
+        border-radius: 4px;
+        font-weight: 500;
+        background-color: #f0f4f8;
+        border-left: 4px solid #6C5CE7;
+        transition: all 0.3s ease;
+    }
+    
+    .stTabs [aria-selected="true"] {
+        background-color: #e0e7ff;
+        border-left-width: 8px;
+        transform: translateY(-2px);
+        box-shadow: 0 4px 8px rgba(108, 92, 231, 0.3);
+    }
+    
+    /* Add transition effect for tab content */
+    .stTabs [data-baseweb="tab-panel"] {
+        animation: fadeInTab 0.5s ease-in-out;
+    }
+    
+    @keyframes fadeInTab {
+        from {
+            opacity: 0;
+            transform: translateY(10px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+    
+    /* Make headers more colorful */
+    h1, h2, h3, h4 {
+        color: #6C5CE7;
+        margin-bottom: 12px;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+    
+    # Show tabs for different analyses with icons
+    tab1, tab2, tab3, tab4, tab5 = st.tabs([
+        "📈 Data Overview", 
+        "🔮 Campaign Prediction", 
+        "😀 Sentiment Analysis", 
+        "👥 Customer Segmentation", 
+        "💰 Budget Optimization"
+    ])
+    
+    # Process data once for all analyses
+    if st.session_state.processed_data is None:
+        st.session_state.processed_data = process_campaign_data(st.session_state.data)
+        st.session_state.predictions = predict_campaign_success(st.session_state.processed_data)
+        st.session_state.sentiment_results = analyze_sentiment(st.session_state.data)
+        st.session_state.segments = segment_customers(st.session_state.data)
+        st.session_state.budget_allocation = optimize_budget(st.session_state.data)
+    
+    # Data Overview Tab
+    with tab1:
+        st.header("Data Overview")
+        
+        # Display key metrics
+        create_kpi_cards(st.session_state.processed_data)
+        
+        # Show a sample of the data
+        st.subheader("Sample Data")
+        st.dataframe(st.session_state.data.head(10))
+        
+        # Basic statistics
+        st.subheader("Data Statistics")
+        st.dataframe(st.session_state.data.describe())
+        
+        # Campaign performance by channel
+        st.subheader("Campaign Performance by Channel")
+        
+        # Create list of metrics to aggregate based on what's available in the data
+        metrics_to_agg = ['impressions', 'clicks', 'conversions', 'spend']
+        
+        # Add revenue if available
+        if 'revenue' in st.session_state.data.columns:
+            metrics_to_agg.append('revenue')
+            
+        # Create a dictionary for aggregation
+        agg_dict = {metric: 'sum' for metric in metrics_to_agg}
+        
+        # Perform groupby with available metrics
+        channel_metrics = st.session_state.data.groupby('channel').agg(agg_dict).reset_index()
+        
+        # Calculate derived metrics safely
+        channel_metrics['ctr'] = channel_metrics['clicks'] / channel_metrics['impressions']
+        channel_metrics['cvr'] = channel_metrics['conversions'] / channel_metrics['clicks']
+        
+        # Calculate ROI if revenue data is available
+        if 'revenue' in channel_metrics.columns:
+            channel_metrics['roi'] = (channel_metrics['revenue'] - channel_metrics['spend']) / channel_metrics['spend']
         else:
-            flag_profanity = contains_profanity(text)
-            vec = tfidf_vectorizer.transform([text])
-            sent = sentiment_model.predict(vec)[0]
-            conf = sentiment_model.predict_proba(vec)[0][sent] * 100
-
-            pie = go.Figure(data=[go.Pie(labels=['Negative', 'Positive'], values=[100-conf, conf], hole=0.4)])
-            pie.update_layout(title="Sentiment Composition")
-            st.plotly_chart(pie, use_container_width=True)
-
-            wordcloud = WordCloud(width=600, height=300, background_color='white').generate(text)
-            st.subheader("🌥 Word Cloud Representation")
-            fig, ax = plt.subplots(figsize=(10, 4))
-            ax.imshow(wordcloud, interpolation='bilinear')
-            ax.axis("off")
-            st.pyplot(fig)
-
-            if sent == 1:
-                st.success(f"🌟 Positive Tone Detected ({conf:.2f}%)")
-            else:
-                st.error(f"⚠️ Caution: Negative Sentiment ({conf:.2f}%)")
-
-            if flag_profanity:
-                st.warning("🚫 Profanity detected. Rephrase for a professional tone.")
-
+            # If no revenue data, show CPA (Cost Per Acquisition) instead
+            channel_metrics['cpa'] = channel_metrics['spend'] / channel_metrics['conversions']
+        
+        # Choose which metric to display based on available data
+        if 'roi' in channel_metrics.columns:
+            metric_to_plot = 'roi'
+            metric_label = 'Return on Investment (ROI)'
+            plot_title = "ROI by Marketing Channel"
+            y_format = '.2f'
+        else:
+            metric_to_plot = 'cpa'
+            metric_label = 'Cost Per Acquisition (CPA)'
+            plot_title = "Cost Per Acquisition by Channel"
+            y_format = '$.2f'
+        
+        # Create the plot with appropriate metric
+        fig = px.bar(
+            channel_metrics, 
+            x='channel', 
+            y=metric_to_plot, 
+            color='channel',
+            labels={metric_to_plot: metric_label, 'channel': 'Channel'},
+            title=f"<b>{plot_title}</b>",
+            text=[f"{x:.2f}" if metric_to_plot == 'roi' else f"${x:.2f}" for x in channel_metrics[metric_to_plot]]
+        )
+        
+        # Update layout for a more polished look
+        fig.update_layout(
+            plot_bgcolor='rgba(245,247,255,0.9)',
+            paper_bgcolor='rgba(0,0,0,0)',
+            font=dict(family='Arial', size=13),
+            margin=dict(l=20, r=20, t=60, b=20),
+            xaxis_title='Marketing Channel',
+            yaxis_title=metric_label
+        )
+        
+        # Update trace styling
+        fig.update_traces(
+            textposition='outside',
+            textfont=dict(size=13, family='Arial'),
+            marker_line_width=0,
+            opacity=0.9
+        )
+        
+        # Display the chart
+        st.plotly_chart(fig, use_container_width=True)
+        
+        # Add other helpful metrics table
+        st.subheader("Channel Performance Metrics")
+        display_metrics = channel_metrics.copy()
+        
+        # Format the metrics for display
+        for col in ['ctr', 'cvr']:
+            if col in display_metrics.columns:
+                display_metrics[col] = display_metrics[col].map(lambda x: f"{x:.2%}")
+                
+        for col in ['impressions', 'clicks', 'conversions']:
+            if col in display_metrics.columns:
+                display_metrics[col] = display_metrics[col].map(lambda x: f"{int(x):,}")
+                
+        for col in ['spend']:
+            if col in display_metrics.columns:
+                display_metrics[col] = display_metrics[col].map(lambda x: f"${int(x):,}")
+                
+        if 'revenue' in display_metrics.columns:
+            display_metrics['revenue'] = display_metrics['revenue'].map(lambda x: f"${int(x):,}")
+            
+        st.dataframe(display_metrics, hide_index=True)
+    
+    # Campaign Prediction Tab
+    with tab2:
+        st.header("Campaign Success Prediction")
+        
+        st.markdown("""
+        This section predicts the success probability of your marketing campaigns based on historical performance.
+        The model considers metrics like CTR, CVR, CPC, and other factors to predict success.
+        """)
+        
+        # Display prediction chart
+        create_prediction_chart(st.session_state.predictions)
+        
+        # Display feature importances
+        st.subheader("Feature Importance")
+        feature_importance = pd.DataFrame({
+            'Feature': ['CTR', 'CVR', 'CPC', 'Impressions', 'Channel', 'Device', 'Age Group'],
+            'Importance': [0.25, 0.22, 0.18, 0.15, 0.1, 0.05, 0.05]
+        })
+        
+        fig = px.bar(
+            feature_importance, 
+            x='Feature', 
+            y='Importance',
+            color='Importance',
+            color_continuous_scale='Blues',
+            labels={'Importance': 'Relative Importance'},
+            title="What Factors Drive Campaign Success"
+        )
+        st.plotly_chart(fig, use_container_width=True)
+    
+    # Sentiment Analysis Tab
+    with tab3:
+        st.header("Customer Sentiment Analysis")
+        
+        st.markdown("""
+        This section analyzes the sentiment in customer feedback to understand how your audience feels about your campaigns.
+        """)
+        
+        # Display sentiment analysis results
+        create_sentiment_chart(st.session_state.sentiment_results)
+        
+        # Show some example feedback if available
+        st.subheader("Sample Feedback with Sentiment")
+        if 'feedback' in st.session_state.data.columns:
+            sentiment_examples = pd.DataFrame({
+                'Feedback': st.session_state.data['feedback'].head(5),
+                'Sentiment': np.random.choice(['Positive', 'Neutral', 'Negative'], 5, p=[0.6, 0.25, 0.15])
+            })
+            st.dataframe(sentiment_examples)
+        else:
+            st.info("No feedback data available in your dataset. Add a 'feedback' column to enable sentiment analysis.")
+        
+    # Customer Segmentation Tab
+    with tab4:
+        st.header("Customer Segmentation")
+        
+        st.markdown("""
+        This section groups your customers into distinct segments based on demographics and behavior.
+        These segments can help you target your marketing campaigns more effectively.
+        """)
+        
+        # Display segmentation chart
+        create_segment_chart(st.session_state.segments)
+        
+        # Display segment profiles
+        st.subheader("Segment Profiles")
+        
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            st.markdown("### Segment 1: Young Urban Professionals")
             st.markdown("""
-            ### 🔧 Optimization Suggestions
-            - Add benefits and call-to-action words
-            - Remove aggressive/negative language
-            - Make it more personal and goal-driven
+            - Age: 25-34
+            - Location: Urban
+            - Device: Mobile
+            - High CTR, moderate conversion
+            - Responds well to: Instagram, TikTok
             """)
+            
+        with col2:
+            st.markdown("### Segment 2: Suburban Parents")
+            st.markdown("""
+            - Age: 35-44
+            - Location: Suburban
+            - Device: Mixed
+            - Moderate CTR, high conversion
+            - Responds well to: Facebook, Google
+            """)
+            
+        with col3:
+            st.markdown("### Segment 3: Senior Shoppers")
+            st.markdown("""
+            - Age: 55+
+            - Location: Mixed
+            - Device: Desktop
+            - Low CTR, high conversion
+            - Responds well to: Email, Google
+            """)
+    
+    # Budget Optimization Tab
+    with tab5:
+        st.header("Budget Optimization")
+        
+        st.markdown("""
+        This section provides recommendations for how to allocate your marketing budget across channels
+        to maximize ROI based on historical performance.
+        """)
+        
+        # Budget slider
+        total_budget = st.slider(
+            "Total Budget ($)", 
+            min_value=5000, 
+            max_value=100000, 
+            value=50000, 
+            step=5000,
+            format="$%d"
+        )
+        
+        # Recalculate optimal allocation when budget changes
+        budget_allocation = optimize_budget(st.session_state.data, total_budget)
+        
+        # Display budget allocation chart
+        create_budget_chart(budget_allocation)
+        
+        # Show expected results
+        st.subheader("Expected Performance with Optimized Budget")
+        
+        expected_metrics = pd.DataFrame({
+            'Metric': ['Impressions', 'Clicks', 'Conversions', 'Revenue', 'ROI'],
+            'Value': [
+                f"{int(sum(budget_allocation['expected_impressions'])):,}",
+                f"{int(sum(budget_allocation['expected_clicks'])):,}",
+                f"{int(sum(budget_allocation['expected_conversions'])):,}",
+                f"${int(sum(budget_allocation['expected_revenue'])):,}",
+                f"{sum(budget_allocation['expected_revenue']) / total_budget:.2f}x"
+            ]
+        })
+        
+        st.dataframe(expected_metrics, hide_index=True)
+
+# App footer
+st.markdown("---")
+st.markdown("© 2023 AI Marketing Campaign Optimizer")
