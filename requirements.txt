@@ -1,9 +1,7 @@
 streamlit
-scikit-learn
-xgboost
-joblib
-numpy
 pandas
+numpy
 plotly
-seaborn
-wordcloud
+scikit-learn
+joblib
+xgboost
