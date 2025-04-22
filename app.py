@@ -671,4 +671,4 @@ if st.session_state.data is not None:
 
 # App footer
 st.markdown("---")
-st.markdown("© 2023 AI Marketing Campaign Optimizer")
+st.markdown("© 2025 AI Marketing Campaign Optimizer")
