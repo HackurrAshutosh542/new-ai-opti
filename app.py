@@ -10,10 +10,15 @@ from utils.data_processor import process_campaign_data, validate_data
 from utils.visualizations import (create_kpi_cards, create_prediction_chart, 
                                 create_sentiment_chart, create_segment_chart, 
                                 create_budget_chart)
+from utils.advanced_visualizations import (create_insight_cards, create_comparative_charts,
+                                        create_attribution_analysis, create_customer_journey_visualization,
+                                        create_competitor_analysis)
 from models.prediction_model import predict_campaign_success
 from models.sentiment_analyzer import analyze_sentiment
 from models.customer_segmentation import segment_customers
 from models.budget_optimizer import optimize_budget
+from models.advanced_analytics import (perform_trend_analysis, generate_forecast,
+                                    perform_marketing_mix_model, generate_advanced_insights)
 
 # Set page config
 st.set_page_config(
@@ -405,12 +410,15 @@ if st.session_state.data is not None:
     """, unsafe_allow_html=True)
     
     # Show tabs for different analyses with icons
-    tab1, tab2, tab3, tab4, tab5 = st.tabs([
+    tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs([
         "📈 Data Overview", 
         "🔮 Campaign Prediction", 
         "😀 Sentiment Analysis", 
         "👥 Customer Segmentation", 
-        "💰 Budget Optimization"
+        "💰 Budget Optimization",
+        "📊 Advanced Analytics",
+        "🛣️ Customer Journey",
+        "🏆 Competitive Analysis"
     ])
     
     # Process data once for all analyses
@@ -420,6 +428,12 @@ if st.session_state.data is not None:
         st.session_state.sentiment_results = analyze_sentiment(st.session_state.data)
         st.session_state.segments = segment_customers(st.session_state.data)
         st.session_state.budget_allocation = optimize_budget(st.session_state.data)
+        
+        # Generate advanced analytics
+        st.session_state.trend_analysis = perform_trend_analysis(st.session_state.processed_data)
+        st.session_state.forecast_results = generate_forecast(st.session_state.processed_data)
+        st.session_state.mix_model = perform_marketing_mix_model(st.session_state.processed_data)
+        st.session_state.advanced_insights = generate_advanced_insights(st.session_state.processed_data)
     
     # Data Overview Tab
     with tab1:
@@ -668,6 +682,208 @@ if st.session_state.data is not None:
         })
         
         st.dataframe(expected_metrics, hide_index=True)
+
+# Advanced Analytics Tab
+    with tab6:
+        st.header("Advanced Marketing Analytics")
+        
+        st.markdown("""
+        <div style='animation: fadeIn 1.5s;'>
+        <h3>Deep Dive into Marketing Performance</h3>
+        This advanced analytics section provides deeper insights into your marketing performance, including trend analysis, 
+        forecasting, and marketing mix modeling to optimize your strategy.
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # Create tabs within the Advanced Analytics tab
+        adv_tab1, adv_tab2, adv_tab3, adv_tab4 = st.tabs([
+            "📈 Performance Trends", 
+            "🔮 Forecasting", 
+            "🔄 Marketing Mix", 
+            "💡 Key Insights"
+        ])
+        
+        # Performance Trends subtab
+        with adv_tab1:
+            st.subheader("Marketing Performance Trends")
+            
+            st.markdown("""
+            This analysis shows how your marketing performance has changed over time across different channels and metrics.
+            Identify trends, seasonality, and potential areas for improvement.
+            """)
+            
+            # Display channel performance over time
+            st.plotly_chart(st.session_state.trend_analysis['channel_performance_fig'], use_container_width=True)
+            
+            # Display overall metrics over time
+            st.plotly_chart(st.session_state.trend_analysis['metrics_fig'], use_container_width=True)
+            
+            # Add comparative benchmarks
+            st.subheader("Performance Benchmarking")
+            create_comparative_charts(st.session_state.processed_data)
+            
+        # Forecasting subtab
+        with adv_tab2:
+            st.subheader("Marketing Performance Forecast")
+            
+            st.markdown("""
+            This forecast predicts how your marketing channels will perform in the coming months based on historical trends and patterns.
+            Use these predictions to plan your future marketing strategy.
+            """)
+            
+            # Display conversion forecast
+            st.plotly_chart(st.session_state.forecast_results['conversion_fig'], use_container_width=True)
+            
+            # Display revenue forecast
+            st.plotly_chart(st.session_state.forecast_results['revenue_fig'], use_container_width=True)
+            
+            # Display forecast summary
+            st.subheader("Forecast Summary (Next 3 Months)")
+            forecast_summary = st.session_state.forecast_results['forecast_summary']
+            
+            # Format forecast summary for display
+            forecast_display = forecast_summary.copy()
+            forecast_display['conversions'] = forecast_display['conversions'].map(lambda x: f"{int(x):,}")
+            forecast_display['revenue'] = forecast_display['revenue'].map(lambda x: f"${int(x):,}")
+            forecast_display['spend'] = forecast_display['spend'].map(lambda x: f"${int(x):,}")
+            forecast_display['roi'] = forecast_display['roi'].map(lambda x: f"{x:.2f}x")
+            
+            # Display forecast summary
+            st.dataframe(forecast_display, hide_index=True)
+            
+        # Marketing Mix Modeling subtab
+        with adv_tab3:
+            st.subheader("Marketing Mix Modeling")
+            
+            st.markdown("""
+            Marketing Mix Modeling helps you understand how different marketing channels contribute to your overall performance
+            and how changes in channel investment would impact your results.
+            """)
+            
+            # Display channel contribution pie chart
+            st.plotly_chart(st.session_state.mix_model['contribution_fig'], use_container_width=True)
+            
+            # Display revenue attribution waterfall chart
+            st.plotly_chart(st.session_state.mix_model['waterfall_fig'], use_container_width=True)
+            
+            # Display elasticity chart
+            st.plotly_chart(st.session_state.mix_model['elasticity_fig'], use_container_width=True)
+            
+            # Add attribution analysis
+            st.subheader("Multi-touch Attribution Analysis")
+            create_attribution_analysis(st.session_state.processed_data)
+            
+        # Key Insights subtab
+        with adv_tab4:
+            st.subheader("AI-Generated Marketing Insights")
+            
+            st.markdown("""
+            Our AI has analyzed your marketing data and generated key insights and recommendations to improve your strategy.
+            These insights are prioritized based on potential impact.
+            """)
+            
+            # Display insight cards
+            create_insight_cards(st.session_state.advanced_insights)
+    
+    # Customer Journey Tab
+    with tab7:
+        st.header("Customer Journey Analysis")
+        
+        st.markdown("""
+        <div style='animation: fadeIn 1.5s;'>
+        <h3>Understand Your Customer's Path to Purchase</h3>
+        This section visualizes how customers move through your marketing funnel, from initial awareness to final conversion.
+        Identify bottlenecks and opportunities to optimize the customer journey.
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # Create the customer journey visualization
+        create_customer_journey_visualization()
+        
+        # Add touchpoint analysis
+        st.subheader("Touchpoint Effectiveness Analysis")
+        
+        # Create a simple touchpoint effectiveness chart
+        touchpoints = ['First Visit', 'Email Sign-up', 'Retargeting Ad', 'Product Page', 'Cart', 'Checkout']
+        effectiveness = [85, 45, 65, 55, 35, 75]
+        
+        touchpoint_fig = px.bar(
+            x=touchpoints,
+            y=effectiveness,
+            text=[f"{val}%" for val in effectiveness],
+            labels={'x': 'Touchpoint', 'y': 'Effectiveness Score'},
+            title="Touchpoint Effectiveness Score",
+            color=effectiveness,
+            color_continuous_scale='Viridis'
+        )
+        
+        touchpoint_fig.update_layout(
+            xaxis_title="Customer Journey Touchpoint",
+            yaxis_title="Effectiveness Score (0-100)",
+            template='plotly_white'
+        )
+        
+        touchpoint_fig.update_traces(
+            textposition='outside',
+            textfont=dict(size=14),
+            marker_line_width=0
+        )
+        
+        st.plotly_chart(touchpoint_fig, use_container_width=True)
+        
+        # Add cohort analysis
+        st.subheader("Customer Cohort Analysis")
+        
+        # Create cohort retention heatmap
+        cohorts = ['Jan 2023', 'Feb 2023', 'Mar 2023', 'Apr 2023', 'May 2023', 'Jun 2023']
+        months = ['Month 1', 'Month 2', 'Month 3', 'Month 4', 'Month 5', 'Month 6']
+        
+        # Generate retention data (higher values for earlier months, declining over time)
+        retention_data = []
+        for i, cohort in enumerate(cohorts):
+            cohort_retention = []
+            for j, month in enumerate(months):
+                if j < len(cohorts) - i:
+                    # Start with 100% retention and decrease over time with some randomness
+                    retention = max(10, 100 - (j * 15) + np.random.randint(-5, 5))
+                    retention_data.append({'Cohort': cohort, 'Month': month, 'Retention': retention})
+        
+        retention_df = pd.DataFrame(retention_data)
+        
+        # Create heatmap
+        cohort_fig = px.density_heatmap(
+            retention_df,
+            x='Month',
+            y='Cohort',
+            z='Retention',
+            color_continuous_scale='Blues',
+            title="Customer Cohort Retention Analysis",
+            text_auto=True
+        )
+        
+        cohort_fig.update_layout(
+            xaxis_title="Lifetime Month",
+            yaxis_title="Acquisition Cohort",
+            coloraxis_colorbar=dict(title="Retention %"),
+            template='plotly_white'
+        )
+        
+        st.plotly_chart(cohort_fig, use_container_width=True)
+        
+    # Competitive Analysis Tab
+    with tab8:
+        st.header("Competitive Landscape Analysis")
+        
+        st.markdown("""
+        <div style='animation: fadeIn 1.5s;'>
+        <h3>Understand Your Position in the Market</h3>
+        This section analyzes how your marketing performance compares to competitors and identifies opportunities
+        to differentiate and gain competitive advantage.
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # Create competitive analysis visualizations
+        create_competitor_analysis()
 
 # App footer
 st.markdown("---")
